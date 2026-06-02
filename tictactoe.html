@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tic-Tac-Toe — SK Games</title>
+  <meta name="description" content="Play Tic-Tac-Toe against an unbeatable minimax bot. You can't win — only draw." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%237c3aed'/%3E%3Ctext x='50' y='66' font-family='Inter,sans-serif' font-size='52' font-weight='800' fill='white' text-anchor='middle'%3ESK%3C/text%3E%3C/svg%3E" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/skgames.css" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#f5f3ff', 100: '#ede9fe', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9', 800: '#5b21b6' }
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --brand-50:  #f5f3ff;
+      --brand-100: #ede9fe;
+      --brand-500: #8b5cf6;
+      --brand-600: #7c3aed;
+      --brand-700: #6d28d9;
+      --brand-800: #5b21b6;
+    }
+
+    /* Board */
+    .ttt-board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      width: min(420px, 92vw);
+      aspect-ratio: 1 / 1;
+      margin: 0 auto;
+      position: relative;
+    }
+    .ttt-cell {
+      background: white;
+      border-radius: 1rem;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.05);
+      cursor: pointer;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+      overflow: hidden;
+    }
+    .ttt-cell:hover:not(.filled):not(.locked) {
+      transform: translateY(-2px);
+      border-color: #c4b5fd;
+      box-shadow: 0 4px 14px rgba(124, 58, 237, 0.12), 0 12px 32px rgba(15, 23, 42, 0.06);
+    }
+    .ttt-cell.locked { cursor: not-allowed; }
+    .ttt-cell svg { width: 70%; height: 70%; }
+
+    /* Hover preview */
+    .ttt-cell .preview {
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      position: absolute;
+      width: 70%; height: 70%;
+      pointer-events: none;
+    }
+    .ttt-cell:hover:not(.filled):not(.locked) .preview { opacity: 0.2; }
+
+    /* Stroke draw animation */
+    @keyframes draw-stroke {
+      from { stroke-dashoffset: var(--dash); }
+      to   { stroke-dashoffset: 0; }
+    }
+    .stroke-anim {
+      stroke-dasharray: var(--dash);
+      stroke-dashoffset: var(--dash);
+      animation: draw-stroke 0.25s ease forwards;
+    }
+
+    /* Winning line overlay */
+    .win-line {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      width: 100%; height: 100%;
+    }
+    .win-line line {
+      stroke: #7c3aed;
+      stroke-width: 8;
+      stroke-linecap: round;
+      stroke-dasharray: 1000;
+      stroke-dashoffset: 1000;
+      animation: draw-line 0.45s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      filter: drop-shadow(0 2px 6px rgba(124, 58, 237, 0.35));
+    }
+    @keyframes draw-line { to { stroke-dashoffset: 0; } }
+
+    /* Segmented control */
+    .seg {
+      display: inline-flex;
+      background: #f1f5f9;
+      padding: 4px;
+      border-radius: 0.75rem;
+      gap: 2px;
+    }
+    .seg button {
+      padding: 0.5rem 1rem;
+      border-radius: 0.55rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #475569;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .seg button:hover { color: #6d28d9; }
+    .seg button.active {
+      background: white;
+      color: #6d28d9;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    }
+
+    /* Stats */
+    .stat-pill {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.875rem;
+      padding: 0.75rem 1rem;
+      text-align: center;
+      min-width: 80px;
+    }
+    .stat-pill .v { font-size: 1.5rem; font-weight: 800; line-height: 1; }
+    .stat-pill .l { font-size: 0.7rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+
+    /* Status bar */
+    .status-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.625rem 1.25rem;
+      border-radius: 999px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #334155;
+      min-height: 44px;
+      transition: all 0.2s ease;
+    }
+    .status-bar.win { background: linear-gradient(135deg, #ecfdf5, #d1fae5); border-color: #6ee7b7; color: #047857; }
+    .status-bar.loss { background: linear-gradient(135deg, #fef2f2, #fee2e2); border-color: #fca5a5; color: #b91c1c; }
+    .status-bar.draw { background: linear-gradient(135deg, #f5f3ff, #ede9fe); border-color: #c4b5fd; color: #6d28d9; }
+    .status-bar.thinking { background: #f8fafc; color: #475569; }
+
+    .think-spinner {
+      width: 14px; height: 14px;
+      border: 2px solid #cbd5e1;
+      border-top-color: #7c3aed;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+    }
+
+    /* Confetti */
+    .confetti {
+      position: fixed;
+      top: -10px;
+      width: 10px;
+      height: 14px;
+      pointer-events: none;
+      z-index: 200;
+      animation: confetti-fall linear forwards;
+    }
+    @keyframes confetti-fall {
+      to {
+        transform: translateY(110vh) rotate(720deg);
+        opacity: 0;
+      }
+    }
+
+    /* Easter egg */
+    .easter-egg {
+      background: linear-gradient(135deg, #f5f3ff, #fdf2f8);
+      border: 1px dashed #c4b5fd;
+      border-radius: 0.875rem;
+      padding: 0.75rem 1rem;
+      color: #6d28d9;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    /* Streak chip */
+    .streak-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #fff7ed, #ffedd5);
+      border: 1px solid #fdba74;
+      color: #c2410c;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .streak-chip.draws { background: linear-gradient(135deg, #f5f3ff, #ede9fe); border-color: #c4b5fd; color: #6d28d9; }
+    .streak-chip.losses { background: linear-gradient(135deg, #fef2f2, #fee2e2); border-color: #fca5a5; color: #b91c1c; }
+
+    /* Cell number hint */
+    .key-hint {
+      position: absolute;
+      top: 6px; left: 8px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      pointer-events: none;
+    }
+    @media (max-width: 480px) {
+      .key-hint { display: none; }
+    }
+  </style>
+</head>
+<body class="font-sans bg-gradient-to-br from-slate-50 via-violet-50/40 to-fuchsia-50/30 min-h-screen text-slate-900">
+
+  <div class="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+    <div class="absolute -top-32 -left-32 w-96 h-96 bg-violet-200/30 rounded-full blur-3xl"></div>
+    <div class="absolute top-1/2 -right-40 w-[36rem] h-[36rem] bg-fuchsia-200/25 rounded-full blur-3xl"></div>
+    <div class="absolute bottom-0 left-1/3 w-96 h-96 bg-pink-200/30 rounded-full blur-3xl"></div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="sticky top-0 z-50 backdrop-blur-md bg-white/70 border-b border-slate-200/60">
+    <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+      <a href="index.html" class="flex items-center gap-2.5 font-bold text-lg">
+        <span class="bg-gradient-to-br from-violet-500 to-violet-700 text-white w-9 h-9 rounded-xl flex items-center justify-center font-extrabold shadow-md shadow-violet-500/30">SK</span>
+        <span>Games</span>
+      </a>
+      <div class="nav-pills hidden md:flex gap-0.5 text-sm font-medium">
+        <a href="chess.html" class="px-3 py-2 rounded-lg text-slate-600 hover:text-violet-700 hover:bg-violet-50 transition-colors">Chess</a>
+        <a href="checkers.html" class="px-3 py-2 rounded-lg text-slate-600 hover:text-violet-700 hover:bg-violet-50 transition-colors">Checkers</a>
+        <a href="connect-four.html" class="px-3 py-2 rounded-lg text-slate-600 hover:text-violet-700 hover:bg-violet-50 transition-colors">Connect 4</a>
+        <a href="tictactoe.html" class="px-3 py-2 rounded-lg bg-violet-50 text-violet-700">TicTacToe</a>
+        <a href="wolf-sheep.html" class="px-3 py-2 rounded-lg text-slate-600 hover:text-violet-700 hover:bg-violet-50 transition-colors">Wolf & Sheep</a>
+        <a href="memory.html" class="px-3 py-2 rounded-lg text-slate-600 hover:text-violet-700 hover:bg-violet-50 transition-colors">Memory</a>
+      </div>
+      <a href="https://shalomkarr.pages.dev/" target="_blank" rel="noopener" class="hidden sm:inline-flex btn-ghost text-xs">
+        Portfolio →
+      </a>
+    </div>
+  </nav>
+
+  <!-- Breadcrumb -->
+  <div class="max-w-5xl mx-auto px-6 pt-6">
+    <nav class="text-xs text-slate-500 font-medium">
+      <a href="index.html" class="hover:text-violet-700">Games</a>
+      <span class="mx-1.5 text-slate-400">›</span>
+      <span class="text-slate-700">Tic-Tac-Toe</span>
+    </nav>
+  </div>
+
+  <!-- Hero -->
+  <header class="max-w-5xl mx-auto px-6 pt-6 pb-6 text-center">
+    <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight bg-gradient-to-br from-slate-900 via-slate-800 to-violet-700 bg-clip-text text-transparent">
+      Tic-Tac-Toe
+    </h1>
+    <p class="mt-3 text-base sm:text-lg text-slate-600 max-w-xl mx-auto">
+      Unbeatable. You can't win, only draw.
+    </p>
+  </header>
+
+  <!-- Game -->
+  <main class="max-w-5xl mx-auto px-6 pb-20">
+
+    <!-- Top controls row -->
+    <div class="flex flex-wrap items-center justify-center gap-3 mb-6">
+      <div class="seg" role="tablist" aria-label="Difficulty">
+        <button data-mode="easy" type="button">Easy</button>
+        <button data-mode="medium" type="button">Medium</button>
+        <button data-mode="unbeatable" class="active" type="button">Unbeatable</button>
+      </div>
+    </div>
+
+    <!-- Stats panel -->
+    <div class="flex flex-wrap items-center justify-center gap-3 mb-5">
+      <div class="stat-pill">
+        <div class="v text-emerald-600" id="stat-wins">0</div>
+        <div class="l">Wins</div>
+      </div>
+      <div class="stat-pill">
+        <div class="v text-violet-700" id="stat-draws">0</div>
+        <div class="l">Draws</div>
+      </div>
+      <div class="stat-pill">
+        <div class="v text-rose-600" id="stat-losses">0</div>
+        <div class="l">Losses</div>
+      </div>
+      <div class="stat-pill">
+        <div class="v text-slate-900" id="stat-streak">0</div>
+        <div class="l" id="stat-streak-label">Streak</div>
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div class="text-center mb-5 min-h-[44px]">
+      <div class="status-bar" id="status">
+        <svg class="w-4 h-4 text-violet-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        <span id="status-text">Your turn</span>
+      </div>
+    </div>
+
+    <!-- Board -->
+    <div class="ttt-board" id="board" aria-label="Tic-Tac-Toe board">
+      <!-- cells injected -->
+    </div>
+
+    <!-- Streak chip -->
+    <div class="text-center mt-5" id="streak-chip-wrap" style="display:none;">
+      <span class="streak-chip" id="streak-chip"></span>
+    </div>
+
+    <!-- Easter egg -->
+    <div class="max-w-md mx-auto mt-5" id="easter-wrap" style="display:none;">
+      <div class="easter-egg text-center">
+        You've mastered the art of the perfect draw. Try Medium for a fight.
+      </div>
+    </div>
+
+    <!-- Bottom controls -->
+    <div class="flex flex-wrap items-center justify-center gap-3 mt-8">
+      <button id="btn-new" class="btn-primary" style="background: linear-gradient(135deg, #7c3aed, #6d28d9); box-shadow: 0 4px 14px rgba(124, 58, 237, 0.25);">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+        New game <span class="opacity-60 text-xs">(N)</span>
+      </button>
+      <button id="btn-switch" class="btn-ghost">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16h13M7 16l4-4m-4 4 4 4M17 8H4m13 0-4-4m4 4-4 4"/></svg>
+        Switch sides <span class="opacity-60 text-xs" id="side-label">(You: X)</span>
+      </button>
+      <button id="btn-reset" class="btn-ghost">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+        Reset stats
+      </button>
+      <button id="btn-sound" class="btn-ghost" aria-pressed="false">
+        <svg class="w-4 h-4" id="sound-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M22 9 16 15M16 9l6 6"/></svg>
+        <span id="sound-label">Sound off</span>
+      </button>
+    </div>
+
+    <!-- Info -->
+    <p class="text-center text-xs text-slate-500 mt-6">
+      Keyboard: numpad <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-mono">1-9</kbd> to play · <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-mono">N</kbd> new game
+    </p>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-200/60 bg-white/50 backdrop-blur-sm py-10">
+    <div class="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <p class="text-sm text-slate-500">
+        Built by <a href="https://shalomkarr.pages.dev/" class="text-violet-700 font-semibold hover:underline">Shalom Karr</a>
+      </p>
+      <p class="text-xs text-slate-400">Pure browser games. No accounts, no ads, no tracking.</p>
+    </div>
+  </footer>
+
+<script>
+'use strict';
+
+/* ============================================================
+   Tic-Tac-Toe — SK Games
+   - Minimax (unbeatable), Medium (win/block + random), Easy (random)
+   - Per-mode stats in localStorage
+   ============================================================ */
+
+// ---------- Constants ----------
+const WIN_LINES = [
+  [0,1,2],[3,4,5],[6,7,8],   // rows
+  [0,3,6],[1,4,7],[2,5,8],   // cols
+  [0,4,8],[2,4,6]            // diags
+];
+// Numpad layout: 7 8 9 / 4 5 6 / 1 2 3
+const NUMPAD_TO_CELL = { '7':0,'8':1,'9':2,'4':3,'5':4,'6':5,'1':6,'2':7,'3':8 };
+const STORE_KEY = 'sk-tictactoe-v1';
+
+// ---------- State ----------
+const state = {
+  board: Array(9).fill(null),  // 'X' | 'O' | null
+  playerMark: 'X',
+  botMark: 'O',
+  turn: 'X',                   // 'X' always starts
+  mode: 'unbeatable',          // 'easy' | 'medium' | 'unbeatable'
+  gameOver: false,
+  locked: false,               // disable input during bot turn / game over
+  stats: loadStats(),
+  soundOn: false,
+};
+
+function defaultModeStats() { return { w: 0, d: 0, l: 0, streak: 0, streakKind: null }; }
+function defaultStats() {
+  return {
+    easy: defaultModeStats(),
+    medium: defaultModeStats(),
+    unbeatable: defaultModeStats(),
+  };
+}
+function loadStats() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return defaultStats();
+    const parsed = JSON.parse(raw);
+    const base = defaultStats();
+    for (const m of ['easy','medium','unbeatable']) {
+      if (parsed[m]) Object.assign(base[m], parsed[m]);
+    }
+    return base;
+  } catch { return defaultStats(); }
+}
+function saveStats() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state.stats)); } catch {}
+}
+
+// ---------- DOM ----------
+const $board = document.getElementById('board');
+const $status = document.getElementById('status');
+const $statusText = document.getElementById('status-text');
+const $statWins = document.getElementById('stat-wins');
+const $statDraws = document.getElementById('stat-draws');
+const $statLosses = document.getElementById('stat-losses');
+const $statStreak = document.getElementById('stat-streak');
+const $statStreakLabel = document.getElementById('stat-streak-label');
+const $sideLabel = document.getElementById('side-label');
+const $easterWrap = document.getElementById('easter-wrap');
+const $streakChipWrap = document.getElementById('streak-chip-wrap');
+const $streakChip = document.getElementById('streak-chip');
+
+// ---------- Init ----------
+function buildBoard() {
+  $board.innerHTML = '';
+  // Build cells in DOM order 0..8 (left-to-right, top-to-bottom)
+  // Show numpad key hint mapping
+  const cellToNumpad = { 0:'7',1:'8',2:'9',3:'4',4:'5',5:'6',6:'1',7:'2',8:'3' };
+  for (let i = 0; i < 9; i++) {
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'ttt-cell';
+    cell.dataset.idx = i;
+    cell.setAttribute('aria-label', `Cell ${i + 1}`);
+    const hint = document.createElement('span');
+    hint.className = 'key-hint';
+    hint.textContent = cellToNumpad[i];
+    cell.appendChild(hint);
+    cell.addEventListener('click', () => handleHumanMove(i));
+    $board.appendChild(cell);
+  }
+  // Winning-line overlay svg (appended last so it sits on top)
+  const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  overlay.setAttribute('viewBox', '0 0 100 100');
+  overlay.setAttribute('preserveAspectRatio', 'none');
+  overlay.classList.add('win-line');
+  overlay.id = 'win-overlay';
+  overlay.style.display = 'none';
+  $board.appendChild(overlay);
+}
+
+function renderStats() {
+  const s = state.stats[state.mode];
+  $statWins.textContent = s.w;
+  $statDraws.textContent = s.d;
+  $statLosses.textContent = s.l;
+  // Streak
+  $statStreak.textContent = s.streak;
+  if (s.streak === 0 || !s.streakKind) {
+    $statStreakLabel.textContent = 'Streak';
+  } else {
+    $statStreakLabel.textContent = `${s.streakKind} streak`;
+  }
+  // Streak chip messaging
+  if (s.streak >= 3 && s.streakKind) {
+    $streakChipWrap.style.display = '';
+    const k = s.streakKind;
+    let msg = '';
+    if (k === 'Win') {
+      msg = `${s.streak} game win streak!`;
+      $streakChip.className = 'streak-chip';
+    } else if (k === 'Draw') {
+      msg = state.mode === 'unbeatable'
+        ? `${s.streak} draws in a row — beating the unbeatable bot`
+        : `${s.streak} draws in a row`;
+      $streakChip.className = 'streak-chip draws';
+    } else if (k === 'Loss') {
+      msg = `${s.streak} losses in a row — switch modes?`;
+      $streakChip.className = 'streak-chip losses';
+    }
+    $streakChip.textContent = msg;
+  } else {
+    $streakChipWrap.style.display = 'none';
+  }
+  // Easter egg
+  if (state.mode === 'unbeatable' && state.stats.unbeatable.d >= 10) {
+    $easterWrap.style.display = '';
+  } else {
+    $easterWrap.style.display = 'none';
+  }
+}
+
+function setStatus(text, variant) {
+  $statusText.textContent = text;
+  $status.className = 'status-bar' + (variant ? ' ' + variant : '');
+  // Replace icon for variant
+  const oldIcon = $status.querySelector('svg, .think-spinner');
+  if (oldIcon) oldIcon.remove();
+  let icon;
+  if (variant === 'thinking') {
+    icon = document.createElement('span');
+    icon.className = 'think-spinner';
+  } else if (variant === 'win') {
+    icon = svg('<path d="M20 6 9 17l-5-5"/>');
+  } else if (variant === 'loss') {
+    icon = svg('<path d="M18 6 6 18M6 6l12 12"/>');
+  } else if (variant === 'draw') {
+    icon = svg('<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>');
+  } else {
+    icon = svg('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>');
+  }
+  icon.classList.add('w-4','h-4');
+  $status.insertBefore(icon, $status.firstChild);
+}
+function svg(inner) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  el.setAttribute('viewBox','0 0 24 24');
+  el.setAttribute('fill','none');
+  el.setAttribute('stroke','currentColor');
+  el.setAttribute('stroke-width','2.5');
+  el.setAttribute('stroke-linecap','round');
+  el.setAttribute('stroke-linejoin','round');
+  el.innerHTML = inner;
+  return el;
+}
+
+// ---------- Drawing X / O ----------
+function drawMark(cellEl, mark) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const s = document.createElementNS(ns, 'svg');
+  s.setAttribute('viewBox', '0 0 100 100');
+  if (mark === 'X') {
+    const color = '#3b82f6';
+    const l1 = document.createElementNS(ns,'line');
+    l1.setAttribute('x1','20'); l1.setAttribute('y1','20');
+    l1.setAttribute('x2','80'); l1.setAttribute('y2','80');
+    l1.setAttribute('stroke', color);
+    l1.setAttribute('stroke-width','10');
+    l1.setAttribute('stroke-linecap','round');
+    l1.classList.add('stroke-anim');
+    l1.style.setProperty('--dash','85');
+    const l2 = document.createElementNS(ns,'line');
+    l2.setAttribute('x1','80'); l2.setAttribute('y1','20');
+    l2.setAttribute('x2','20'); l2.setAttribute('y2','80');
+    l2.setAttribute('stroke', color);
+    l2.setAttribute('stroke-width','10');
+    l2.setAttribute('stroke-linecap','round');
+    l2.classList.add('stroke-anim');
+    l2.style.setProperty('--dash','85');
+    l2.style.animationDelay = '0.12s';
+    l2.style.strokeDashoffset = '85';
+    s.appendChild(l1); s.appendChild(l2);
+  } else {
+    const color = '#f43f5e';
+    const c = document.createElementNS(ns,'circle');
+    c.setAttribute('cx','50'); c.setAttribute('cy','50'); c.setAttribute('r','30');
+    c.setAttribute('stroke', color);
+    c.setAttribute('stroke-width','10');
+    c.setAttribute('fill','none');
+    c.setAttribute('stroke-linecap','round');
+    c.classList.add('stroke-anim');
+    c.style.setProperty('--dash','190');
+    s.appendChild(c);
+  }
+  cellEl.appendChild(s);
+}
+
+function drawPreview(cellEl, mark) {
+  const old = cellEl.querySelector('.preview');
+  if (old) old.remove();
+  const ns = 'http://www.w3.org/2000/svg';
+  const s = document.createElementNS(ns, 'svg');
+  s.setAttribute('viewBox', '0 0 100 100');
+  s.classList.add('preview');
+  if (mark === 'X') {
+    const color = '#3b82f6';
+    for (const [x1,y1,x2,y2] of [[20,20,80,80],[80,20,20,80]]) {
+      const l = document.createElementNS(ns,'line');
+      l.setAttribute('x1',x1); l.setAttribute('y1',y1);
+      l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+      l.setAttribute('stroke', color);
+      l.setAttribute('stroke-width','10');
+      l.setAttribute('stroke-linecap','round');
+      s.appendChild(l);
+    }
+  } else {
+    const color = '#f43f5e';
+    const c = document.createElementNS(ns,'circle');
+    c.setAttribute('cx','50'); c.setAttribute('cy','50'); c.setAttribute('r','30');
+    c.setAttribute('stroke', color);
+    c.setAttribute('stroke-width','10');
+    c.setAttribute('fill','none');
+    s.appendChild(c);
+  }
+  cellEl.appendChild(s);
+}
+
+function updatePreviewsAll() {
+  const cells = $board.querySelectorAll('.ttt-cell');
+  cells.forEach((cellEl, i) => {
+    if (state.board[i] || state.gameOver) {
+      const old = cellEl.querySelector('.preview');
+      if (old) old.remove();
+      return;
+    }
+    drawPreview(cellEl, state.playerMark);
+  });
+}
+
+// ---------- Winning line overlay ----------
+// Each cell center in 0..100 viewBox (3 cells per side, 12px gaps approximated).
+// Use cell-grid coordinates: column centers at ~16.67, 50, 83.33; rows same.
+const CELL_CENTERS = [
+  [16.67, 16.67],[50, 16.67],[83.33, 16.67],
+  [16.67, 50],   [50, 50],   [83.33, 50],
+  [16.67, 83.33],[50, 83.33],[83.33, 83.33]
+];
+function drawWinningLine(line) {
+  const overlay = document.getElementById('win-overlay');
+  overlay.innerHTML = '';
+  overlay.style.display = '';
+  const [a,, c] = line;
+  const [x1, y1] = CELL_CENTERS[a];
+  const [x2, y2] = CELL_CENTERS[c];
+  // Extend slightly past endpoints
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  const ux = dx / len, uy = dy / len;
+  const ext = 6;
+  const xa = x1 - ux * ext, ya = y1 - uy * ext;
+  const xb = x2 + ux * ext, yb = y2 + uy * ext;
+  const ns = 'http://www.w3.org/2000/svg';
+  const ln = document.createElementNS(ns, 'line');
+  ln.setAttribute('x1', xa); ln.setAttribute('y1', ya);
+  ln.setAttribute('x2', xb); ln.setAttribute('y2', yb);
+  // For non-uniform scaling, set vector-effect so stroke stays consistent
+  ln.setAttribute('vector-effect','non-scaling-stroke');
+  overlay.appendChild(ln);
+}
+function clearWinningLine() {
+  const overlay = document.getElementById('win-overlay');
+  if (overlay) { overlay.innerHTML = ''; overlay.style.display = 'none'; }
+}
+
+// ---------- Game logic ----------
+function checkWinner(board) {
+  for (const line of WIN_LINES) {
+    const [a,b,c] = line;
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      return { winner: board[a], line };
+    }
+  }
+  if (board.every(v => v !== null)) return { winner: 'draw', line: null };
+  return null;
+}
+
+function placeMark(idx, mark) {
+  state.board[idx] = mark;
+  const cellEl = $board.querySelector(`.ttt-cell[data-idx="${idx}"]`);
+  if (cellEl) {
+    const old = cellEl.querySelector('.preview');
+    if (old) old.remove();
+    drawMark(cellEl, mark);
+    cellEl.classList.add('filled', 'locked');
+  }
+}
+
+function handleHumanMove(idx) {
+  if (state.locked || state.gameOver) return;
+  if (state.turn !== state.playerMark) return;
+  if (state.board[idx] !== null) return;
+  placeMark(idx, state.playerMark);
+  beep(660, 0.05);
+  const result = checkWinner(state.board);
+  if (result) return finishGame(result);
+  state.turn = state.botMark;
+  setStatus('Thinking…', 'thinking');
+  lockAll(true);
+  setTimeout(botMove, 400);
+}
+
+function botMove() {
+  if (state.gameOver) return;
+  let idx;
+  if (state.mode === 'easy') idx = botEasy();
+  else if (state.mode === 'medium') idx = botMedium();
+  else idx = botUnbeatable();
+
+  if (idx == null) {
+    // Should not happen if game not over
+    return;
+  }
+  placeMark(idx, state.botMark);
+  beep(440, 0.05);
+  const result = checkWinner(state.board);
+  if (result) return finishGame(result);
+  state.turn = state.playerMark;
+  lockAll(false);
+  setStatus('Your turn');
+  updatePreviewsAll();
+}
+
+function lockAll(lock) {
+  state.locked = lock;
+  const cells = $board.querySelectorAll('.ttt-cell');
+  cells.forEach((c, i) => {
+    if (state.board[i] !== null || lock) c.classList.add('locked');
+    else c.classList.remove('locked');
+  });
+  if (lock) {
+    // hide previews while locked
+    $board.querySelectorAll('.preview').forEach(p => p.remove());
+  } else {
+    updatePreviewsAll();
+  }
+}
+
+function finishGame(result) {
+  state.gameOver = true;
+  state.locked = true;
+  $board.querySelectorAll('.ttt-cell').forEach(c => c.classList.add('locked'));
+  $board.querySelectorAll('.preview').forEach(p => p.remove());
+
+  const s = state.stats[state.mode];
+  let kind; // 'Win' | 'Draw' | 'Loss'
+  if (result.winner === 'draw') {
+    s.d++;
+    kind = 'Draw';
+    setStatus('Draw', 'draw');
+    beep(330, 0.08); beep(330, 0.08, 0.12);
+  } else if (result.winner === state.playerMark) {
+    s.w++;
+    kind = 'Win';
+    setStatus('You won!', 'win');
+    drawWinningLine(result.line);
+    beep(660, 0.08); beep(880, 0.1, 0.12); beep(1100, 0.12, 0.24);
+    confettiBurst();
+  } else {
+    s.l++;
+    kind = 'Loss';
+    setStatus('You lost', 'loss');
+    drawWinningLine(result.line);
+    beep(220, 0.15);
+  }
+  // Streak tracking
+  if (s.streakKind === kind) s.streak++;
+  else { s.streakKind = kind; s.streak = 1; }
+  saveStats();
+  renderStats();
+}
+
+function newGame(keepSides) {
+  clearWinningLine();
+  state.board = Array(9).fill(null);
+  state.turn = 'X';
+  state.gameOver = false;
+  state.locked = false;
+  // Rebuild cells (clears SVGs)
+  buildBoard();
+  // If bot is X, bot moves first
+  if (state.botMark === 'X') {
+    setStatus('Thinking…', 'thinking');
+    state.locked = true;
+    setTimeout(botMove, 400);
+  } else {
+    setStatus('Your turn');
+    updatePreviewsAll();
+  }
+  $sideLabel.textContent = `(You: ${state.playerMark})`;
+}
+
+function switchSides() {
+  state.playerMark = state.playerMark === 'X' ? 'O' : 'X';
+  state.botMark = state.playerMark === 'X' ? 'O' : 'X';
+  newGame(true);
+}
+
+function resetStats() {
+  if (!confirm('Reset all stats for all modes?')) return;
+  state.stats = defaultStats();
+  saveStats();
+  renderStats();
+}
+
+// ---------- Bots ----------
+function emptyCells(board) {
+  const out = [];
+  for (let i = 0; i < 9; i++) if (board[i] === null) out.push(i);
+  return out;
+}
+
+function botEasy() {
+  const opts = emptyCells(state.board);
+  return opts[Math.floor(Math.random() * opts.length)];
+}
+
+function findWinningMove(board, mark) {
+  for (const i of emptyCells(board)) {
+    board[i] = mark;
+    const r = checkWinner(board);
+    board[i] = null;
+    if (r && r.winner === mark) return i;
+  }
+  return null;
+}
+
+function botMedium() {
+  // 1. Win if possible
+  const win = findWinningMove(state.board, state.botMark);
+  if (win != null) return win;
+  // 2. Block player
+  const block = findWinningMove(state.board, state.playerMark);
+  if (block != null) return block;
+  // 3. Random
+  return botEasy();
+}
+
+// Minimax. Returns {score, move}. Maximizing for botMark, minimizing for playerMark.
+function minimax(board, currentMark, depth) {
+  const result = checkWinner(board);
+  if (result) {
+    if (result.winner === state.botMark) return { score: 10 - depth, move: -1 };
+    if (result.winner === state.playerMark) return { score: depth - 10, move: -1 };
+    return { score: 0, move: -1 };
+  }
+  const isMax = currentMark === state.botMark;
+  let best = { score: isMax ? -Infinity : Infinity, move: -1 };
+  const opts = emptyCells(board);
+  for (const i of opts) {
+    board[i] = currentMark;
+    const next = currentMark === 'X' ? 'O' : 'X';
+    const child = minimax(board, next, depth + 1);
+    board[i] = null;
+    if (isMax) {
+      if (child.score > best.score) best = { score: child.score, move: i };
+    } else {
+      if (child.score < best.score) best = { score: child.score, move: i };
+    }
+  }
+  return best;
+}
+
+function botUnbeatable() {
+  // Slight optimization: on empty board, just play a corner or center
+  if (state.board.every(v => v === null)) {
+    const opening = [0,2,4,6,8];
+    return opening[Math.floor(Math.random() * opening.length)];
+  }
+  const boardCopy = state.board.slice();
+  const { move } = minimax(boardCopy, state.botMark, 0);
+  return move;
+}
+
+// ---------- Confetti ----------
+function confettiBurst() {
+  const colors = ['#7c3aed','#a855f7','#f43f5e','#3b82f6','#10b981','#f59e0b','#ec4899'];
+  const count = 80;
+  for (let i = 0; i < count; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    c.style.left = (Math.random() * 100) + 'vw';
+    c.style.background = colors[i % colors.length];
+    const dur = 1.6 + Math.random() * 1.6;
+    c.style.animationDuration = dur + 's';
+    c.style.transform = `rotate(${Math.random() * 360}deg)`;
+    c.style.opacity = 0.85;
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), dur * 1000 + 200);
+  }
+}
+
+// ---------- Sound (WebAudio beep) ----------
+let audioCtx = null;
+function beep(freq, dur, delay) {
+  if (!state.soundOn) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = audioCtx.currentTime + (delay || 0);
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    g.gain.value = 0;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(0.08, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
+  } catch {}
+}
+
+// ---------- Mode picker ----------
+document.querySelectorAll('.seg button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.seg button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    state.mode = b.dataset.mode;
+    renderStats();
+    newGame(true);
+  });
+});
+
+// ---------- Buttons ----------
+document.getElementById('btn-new').addEventListener('click', () => newGame(true));
+document.getElementById('btn-switch').addEventListener('click', switchSides);
+document.getElementById('btn-reset').addEventListener('click', resetStats);
+document.getElementById('btn-sound').addEventListener('click', () => {
+  state.soundOn = !state.soundOn;
+  const lbl = document.getElementById('sound-label');
+  const icon = document.getElementById('sound-icon');
+  lbl.textContent = state.soundOn ? 'Sound on' : 'Sound off';
+  document.getElementById('btn-sound').setAttribute('aria-pressed', state.soundOn ? 'true' : 'false');
+  icon.innerHTML = state.soundOn
+    ? '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/>'
+    : '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M22 9 16 15M16 9l6 6"/>';
+});
+
+// ---------- Keyboard ----------
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'n' || e.key === 'N') {
+    newGame(true);
+    return;
+  }
+  if (e.key in NUMPAD_TO_CELL) {
+    const idx = NUMPAD_TO_CELL[e.key];
+    handleHumanMove(idx);
+  }
+});
+
+// ---------- Boot ----------
+buildBoard();
+renderStats();
+newGame(true);
+</script>
+</body>
+</html>

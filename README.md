@@ -2,7 +2,7 @@
 
 A collection of classic browser games by [Shalom Karr](https://shalomkarr.pages.dev/).
 
-Pure HTML/JS — no installs, no accounts, no ads. Companion to [SK Tools](https://sktools.pages.dev/).
+Pure HTML/JS — no installs, no accounts, no ads. Companion to [SK Tools](https://sk-tools.pages.dev/).
 
 ## Games
 

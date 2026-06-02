@@ -551,7 +551,7 @@ function colorOf(p) { return !p ? null : (p === p.toUpperCase() ? 'w' : 'b'); }
 function isWhite(p) { return p && p === p.toUpperCase(); }
 function isBlack(p) { return p && p === p.toLowerCase(); }
 function pieceType(p) { return p ? p.toUpperCase() : null; }
-function inBounds(f, r) { return f >= 0 && f < 8 && r >= 0 && r < 8; }
+function inBounds(f, r) { return f >= 0 && f < 8 && r >= 1 && r <= 8; }
 
 function initialBoard() {
   const b = Array(64).fill(null);
